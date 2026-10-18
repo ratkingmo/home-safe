@@ -1,6 +1,6 @@
 // Keeps a copy of the app on the phone so it opens with no signal.
-const CACHE = 'homesafe-v2';
-const FILES = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
+const CACHE = 'homesafe-v4';
+const FILES = ['./', './index.html', './app.js', './app.css', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
