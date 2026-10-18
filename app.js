@@ -405,24 +405,32 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('mess
 /* ---------- Notifications (Web Push through ntfy, no extra app) ---------- */
 const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && typeof Notification !== 'undefined';
 function b64ToBytes(s){ s = s.replace(/-/g,'+').replace(/_/g,'/'); s += '='.repeat((4 - s.length % 4) % 4); return Uint8Array.from(atob(s), c => c.charCodeAt(0)); }
+// Each step reports where it failed, so a problem can be pinned down from a screenshot.
+const step = (code, fn) => fn().catch(err => { throw Object.assign(new Error(code), { detail: err ? ((err.name && err.name !== 'Error' && err.name !== 'TypeError') ? err.name : String(err.message || err.name || '')).slice(0, 40) : '' }); });
 async function ntfyKey(){
-  const res = await fetch(`${NTFY}config.js`, { cache:'no-store' });
-  const m = (await res.text()).match(/web_push_public_key["']?\s*:\s*["']([A-Za-z0-9_-]{40,120})["']/);
-  if (!m) throw new Error('no key'); return m[1];
+  return step('key', async () => {
+    const res = await fetch(`${NTFY}config.js`, { cache:'no-store' });
+    if (!res.ok) throw new Error('http ' + res.status);
+    const m = (await res.text()).match(/web_push_public_key["']?\s*:\s*["']([A-Za-z0-9_-]{40,120})["']/);
+    if (!m) throw new Error('not found'); return m[1];
+  });
 }
 const pushTopic = () => settings.role === 'me' ? askTopic() : settings.topic;
 async function registerPush(){
-  const reg = await navigator.serviceWorker.ready;
+  const reg = await step('sw', () => navigator.serviceWorker.ready);
+  let lastStatus = '';
   for (let attempt = 0; attempt < 2; attempt++){
-    let sub = await reg.pushManager.getSubscription();
-    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:b64ToBytes(await ntfyKey()) });
+    let sub = await step('sub-get', () => reg.pushManager.getSubscription());
+    if (!sub){ const key = await ntfyKey(); sub = await step('apple', () => reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:b64ToBytes(key) })); }
     const k = sub.toJSON().keys || {};
-    const res = await fetch(`${NTFY}v1/webpush`, { method:'POST', headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ endpoint:sub.endpoint, auth:k.auth, p256dh:k.p256dh, topics:[pushTopic()] }) });
+    // Sent as plain text (no JSON content-type header) so the browser skips the extra CORS preflight round trip.
+    const res = await step('ntfy-net', () => fetch(`${NTFY}v1/webpush`, { method:'POST',
+      body: JSON.stringify({ endpoint:sub.endpoint, auth:k.auth, p256dh:k.p256dh, topics:[pushTopic()] }) }));
     if (res.ok) return true;
+    lastStatus = String(res.status);
     await sub.unsubscribe().catch(()=>{});   // stale key? start fresh once
   }
-  return false;
+  throw Object.assign(new Error('ntfy-' + lastStatus), { detail:'' });
 }
 function renderPushCard(){
   const me = settings.role === 'me', P = me ? 'mePush' : 'push';
@@ -432,6 +440,8 @@ function renderPushCard(){
   card.style.display = show ? 'block' : 'none';
   if (!show) return;
   btn.style.display = '';
+  const errCode = load('hs-pusherr', '');
+  text.textContent = (me ? 'Get a ping when Mom asks where you’re at.' : 'Get a pop-up on this phone every time he sends an update.') + (typeof errCode === 'string' && errCode ? ` (Last try failed: ${errCode})` : '');
   if (!pushSupported()){
     text.textContent = 'To get pop-ups, open Home Safe from its home screen icon (needs iOS 16.4 or newer). Or use the ntfy app, steps in ⚙️.';
     btn.style.display = 'none';
@@ -445,9 +455,13 @@ async function turnOnPush(){
     const perm = await Notification.requestPermission();   // must be first, straight from the tap
     if (perm !== 'granted'){ renderPushCard(); return; }
     toast('Turning on notifications…', 9000);
-    if (await registerPush()){ pushOn = true; save('hs-push', true); toast('Notifications on 💛'); if (es){ es.close(); es = null; } }
-    else toast('Couldn’t turn on notifications here. Use the ntfy app instead, steps in ⚙️.', 5000);
-  }catch{ toast('Couldn’t turn on notifications here. Use the ntfy app instead, steps in ⚙️.', 5000); }
+    await registerPush();
+    pushOn = true; save('hs-push', true); save('hs-pusherr', ''); toast('Notifications on 💛'); if (es){ es.close(); es = null; }
+  }catch(err){
+    const code = `${err && err.message || 'unknown'}${err && err.detail ? ' / ' + err.detail : ''}`.slice(0, 80);
+    save('hs-pusherr', code);
+    toast('Couldn’t turn on notifications. Screenshot the error code under the button.', 5000);
+  }
   renderPushCard(); if (settings.role === 'mom') loop();
 }
 $('pushBtn').onclick = turnOnPush;
@@ -469,7 +483,7 @@ async function resetPush(){
 async function refreshPush(){
   if (!pushOn || !pushSupported()) return;
   if (Notification.permission !== 'granted'){ pushOn = false; save('hs-push', false); renderPushCard(); return; }
-  try{ if (!(await registerPush())) throw 0; }catch{ /* keep trying next open; live/polling still covers it */ }
+  try{ await registerPush(); }catch{ /* keep trying next open; live/polling still covers it */ }
 }
 
 $('refreshBtn').onclick = () => poll(true);
@@ -545,7 +559,7 @@ $('switchRole').onclick = () => { if (confirm('Switch who uses this phone?')){ s
 
 show();
 /* ---------- Version + updates ---------- */
-const BUILD = 13;   // must match sw.js
+const BUILD = 14;   // must match sw.js
 $('buildTag').textContent = `Build ${BUILD}`;
 if ('serviceWorker' in navigator){
   navigator.serviceWorker.register('./sw.js', { updateViaCache:'none' }).then(reg => reg.update()).catch(()=>{});

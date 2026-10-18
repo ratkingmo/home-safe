@@ -1,6 +1,6 @@
 // Keeps a copy of the app on the phone so it opens with no signal.
 // BUILD must match app.js. Bump both on every release.
-const BUILD = 13;
+const BUILD = 14;
 const CACHE = 'homesafe-b' + BUILD;
 const FILES = ['./', './index.html', './app.js', './app.css', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
