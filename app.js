@@ -573,7 +573,7 @@ $('switchRole').onclick = () => { if (confirm('Switch who uses this phone?')){ s
 
 show();
 /* ---------- Version + updates ---------- */
-const BUILD = 15;   // must match sw.js
+const BUILD = 16;   // must match sw.js
 $('buildTag').textContent = `Build ${BUILD}`;
 if ('serviceWorker' in navigator){
   navigator.serviceWorker.register('./sw.js', { updateViaCache:'none' }).then(reg => reg.update()).catch(()=>{});
