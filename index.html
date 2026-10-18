@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://ntfy.sh; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'">
 <meta name="referrer" content="no-referrer">
+<link rel="dns-prefetch" href="https://ntfy.sh">
+<link rel="preconnect" href="https://ntfy.sh" crossorigin>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Home Safe</title>
 <link rel="manifest" href="manifest.json">
@@ -26,7 +28,7 @@
   </section>
 
   <header id="hdr" style="display:none">
-    <h1>Home Safe</h1>
+    <div class="titlewrap"><h1>Home Safe</h1><button class="build" id="buildTag" aria-label="App version, tap to check for updates">Build –</button></div>
     <button class="gear" id="openSettings" aria-label="Settings">⚙️</button>
   </header>
 
@@ -59,18 +61,39 @@
 
   <!-- Sender side -->
   <section class="view" id="vMe">
+    <div class="askbanner" id="askBanner">❓ <span><b>Mom asked where you’re at</b><small id="askTime"></small></span></div>
     <p class="status" id="status">Tap a button to let Mom know.</p>
+    <div class="sendpanel" id="sendPanel" aria-live="polite">
+      <div class="sp-top"><span id="spText">Sending…</span></div>
+      <div class="bar" id="spBar"><div class="fill" id="spFill"></div></div>
+      <div class="sp-bottom"><small id="spSub"></small>
+        <span class="sp-actions"><button class="btn small" id="spRetry">Retry now</button><button class="btn small" id="spCancel">Cancel</button></span></div>
+    </div>
     <div class="actions" id="actions"></div>
-    <section class="history"><h2>Recent updates</h2><ul id="history"></ul></section>
+    <div class="setup" id="mePushCard">
+      <span id="mePushText">Get a ping when Mom asks where you’re at.</span>
+      <br><button class="btn primary" id="mePushBtn">Turn on notifications</button>
+    </div>
+    <section class="history"><h2>Recent updates</h2><div id="history"></div></section>
   </section>
 
   <!-- Mom side -->
   <section class="view" id="vMom">
-    <p class="big" id="momBig">No updates yet</p>
-    <p class="sub" id="momSub">You’ll see his latest update here.</p>
-    <p class="ago" id="momAgo"></p>
-    <button class="btn refresh" id="refreshBtn">Refresh</button>
-    <section class="history"><h2>Recent updates</h2><ul id="momHistory"></ul></section>
+    <div class="momcard" id="momCard">
+      <p class="big" id="momBig">No updates yet</p>
+      <p class="sub" id="momSub"></p>
+      <p class="ago" id="momAgo"></p>
+    </div>
+    <button class="act askbtn" id="askBtn"><span class="em">❓</span><span><strong id="askLabel">Where are you at?</strong><small id="askedNote">Sends him a quick notification</small></span></button>
+    <div class="liverow">
+      <span class="live" id="livePill"><span class="dot"></span><span id="liveText">Connecting…</span></span>
+      <button class="btn small" id="refreshBtn">Refresh</button>
+    </div>
+    <div class="setup" id="pushCard">
+      <span id="pushText">Get a pop-up on this phone every time he sends an update.</span>
+      <br><button class="btn primary" id="pushBtn">Turn on notifications</button>
+    </div>
+    <section class="history"><h2>Recent updates</h2><div id="momHistory"></div></section>
   </section>
 </main>
 
@@ -81,15 +104,11 @@
     <h2>Settings</h2>
 
     <div id="sMe">
-      <div class="field"><label for="name">Your name</label><input id="name" autocomplete="given-name" placeholder="Your name"></div>
-      <div class="field">
-        <label for="phone">Mom’s phone number</label>
-        <input id="phone" type="tel" inputmode="tel" placeholder="915 555 0123">
-        <p>Backup only. With no internet, the app opens a text to Mom instead.</p>
-      </div>
+      <div class="field"><label for="name">Your name</label><input id="name" autocomplete="given-name" placeholder="First name"></div>
       <div class="field">
         <label>Private channel</label>
         <div class="row"><input id="topic" readonly><button type="button" class="btn" id="copyTopic">Copy</button></div>
+        <p>Using the ntfy app for Mom’s “Where are you at?” pings? Subscribe to: <b id="askTopicShow"></b></p>
         <p>Mom needs this name. Keep it between you two.</p>
         <button type="button" class="btn primary wide" id="shareBtn" style="margin-top:10px">Send Mom the setup steps</button>
         <button type="button" class="btn wide" id="testBtn" style="margin-top:10px">Send a test to Mom</button>
@@ -104,8 +123,8 @@
         <p>Paste the channel name your son sent you.</p>
       </div>
       <div class="mom">
-        <b>To get notifications too:</b>
-        <ol><li>Install <b>ntfy</b> from the App Store.</li><li>Tap <b>+</b> and paste the same channel name.</li><li>Tap <b>Subscribe</b> and allow notifications.</li></ol>
+        <b>Backup option: the ntfy app.</b> Only needed if “Turn on notifications” doesn’t work on this phone.
+        <ol><li>Install <b>ntfy</b> from the App Store.</li><li>Open it, tap <b>+</b>, paste the same channel name, and tap <b>Subscribe</b>.</li><li>When it asks, tap <b>Allow</b> for notifications.</li><li>Missed the question? iPhone <b>Settings → Notifications → ntfy</b> → turn on <b>Allow Notifications</b>.</li></ol>
       </div>
     </div>
 
@@ -115,6 +134,17 @@
     </div>
     <button type="button" class="link" id="switchRole">Switch who uses this phone</button>
   </form>
+</dialog>
+
+<dialog id="askDlg">
+  <div class="sheet">
+    <h2>Send a notification?</h2>
+    <p class="dlgtext" id="askDlgText">This will ask him where he’s at.</p>
+    <div class="foot">
+      <button type="button" class="btn" id="askNo">Cancel</button>
+      <button type="button" class="btn primary" id="askYes">Yes, send</button>
+    </div>
+  </div>
 </dialog>
 
 <script src="app.js"></script>
