@@ -157,4 +157,6 @@ input{width:100%;font:inherit;font-size:1.05rem;padding:12px 14px;border-radius:
 .sp-actions .btn{background:var(--bg);white-space:nowrap}
 .titlewrap{display:flex;flex-direction:column;align-items:flex-start}
 .build{border:0;background:none;padding:2px 0 0;font:inherit;font-size:.78rem;color:var(--soft);letter-spacing:.03em;cursor:pointer}
+/* Solid strip behind the iPhone status bar so scrolled content doesn't show under the clock */
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--bg);z-index:10}
 @media (prefers-reduced-motion: reduce){*{transition:none!important}}

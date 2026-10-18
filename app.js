@@ -407,13 +407,27 @@ const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in win
 function b64ToBytes(s){ s = s.replace(/-/g,'+').replace(/_/g,'/'); s += '='.repeat((4 - s.length % 4) % 4); return Uint8Array.from(atob(s), c => c.charCodeAt(0)); }
 // Each step reports where it failed, so a problem can be pinned down from a screenshot.
 const step = (code, fn) => fn().catch(err => { throw Object.assign(new Error(code), { detail: err ? ((err.name && err.name !== 'Error' && err.name !== 'TypeError') ? err.name : String(err.message || err.name || '')).slice(0, 40) : '' }); });
-async function ntfyKey(){
-  return step('key', async () => {
-    const res = await fetch(`${NTFY}config.js`, { cache:'no-store' });
-    if (!res.ok) throw new Error('http ' + res.status);
-    const m = (await res.text()).match(/web_push_public_key["']?\s*:\s*["']([A-Za-z0-9_-]{40,120})["']/);
-    if (!m) throw new Error('not found'); return m[1];
-  });
+/* ntfy's public notification key lives in https://ntfy.sh/config.js. ntfy doesn't allow other
+   sites to read that file with fetch (that was the "key / Load failed" error), but a <script> tag
+   is allowed to load it. So we load it once, only when you tap the button, read just the key,
+   remove the script, and keep the key on the phone. The security rules only allow that one exact file. */
+async function ntfyKey(fresh){
+  const saved = load('hs-vapid', '');
+  if (!fresh && typeof saved === 'string' && /^[A-Za-z0-9_-]{40,120}$/.test(saved)) return saved;
+  return step('key', () => new Promise((ok, bad) => {
+    const prev = window.config;
+    const s = document.createElement('script');
+    s.src = `${NTFY}config.js`;
+    const done = () => { s.remove(); try{ window.config = prev; }catch{} };
+    s.onload = () => {
+      const k = window.config && window.config.web_push_public_key; done();
+      if (typeof k === 'string' && /^[A-Za-z0-9_-]{40,120}$/.test(k)){ save('hs-vapid', k); ok(k); }
+      else bad(new Error('no key in file'));
+    };
+    s.onerror = () => { done(); bad(new Error('script blocked')); };
+    setTimeout(() => { done(); bad(new Error('timeout')); }, 12000);
+    document.head.appendChild(s);
+  }));
 }
 const pushTopic = () => settings.role === 'me' ? askTopic() : settings.topic;
 async function registerPush(){
@@ -421,7 +435,7 @@ async function registerPush(){
   let lastStatus = '';
   for (let attempt = 0; attempt < 2; attempt++){
     let sub = await step('sub-get', () => reg.pushManager.getSubscription());
-    if (!sub){ const key = await ntfyKey(); sub = await step('apple', () => reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:b64ToBytes(key) })); }
+    if (!sub){ const key = await ntfyKey(attempt > 0); sub = await step('apple', () => reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:b64ToBytes(key) })); }
     const k = sub.toJSON().keys || {};
     // Sent as plain text (no JSON content-type header) so the browser skips the extra CORS preflight round trip.
     const res = await step('ntfy-net', () => fetch(`${NTFY}v1/webpush`, { method:'POST',
@@ -559,7 +573,7 @@ $('switchRole').onclick = () => { if (confirm('Switch who uses this phone?')){ s
 
 show();
 /* ---------- Version + updates ---------- */
-const BUILD = 14;   // must match sw.js
+const BUILD = 15;   // must match sw.js
 $('buildTag').textContent = `Build ${BUILD}`;
 if ('serviceWorker' in navigator){
   navigator.serviceWorker.register('./sw.js', { updateViaCache:'none' }).then(reg => reg.update()).catch(()=>{});
